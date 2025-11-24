@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>用藥歷程甘特圖 (完整藥物 + 高解析度輸出)</title>
+  <script src="https://www.gstatic.com/charts/loader.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/canvg/3.0.7/umd.min.js"></script>
+  <style>
+    #chart_div { width: 900px; height: 500px; border: 1px solid #ccc; }
+    #btnExport { margin-top: 10px; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    #btnExport:hover { background: #0056b3; }
+    #result img { max-width: 100%; border: 1px solid #888; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>用藥歷程甘特圖</h1>
+  <div id="chart_div"></div>
+  <button id="btnExport">轉成完整圖片 (PNG) 並下載</button>
+  <div id="result"></div>
+
+  <script>
+    google.charts.load('current', { packages: ['gantt'] });
+    google.charts.setOnLoadCallback(drawChart);
+
+    function daysToMilliseconds(days) {
+      return days * 24 * 60 * 60 * 1000;
+    }
+
+    function drawChart() {
+      const data = new google.visualization.DataTable();
+      data.addColumn('string', 'Task ID');
+      data.addColumn('string', '藥物名稱');
+      data.addColumn('string', '給藥方式');
+      data.addColumn('date', '開始日期');
+      data.addColumn('date', '結束日期');
+      data.addColumn('number', '持續時間 (ms)');
+      data.addColumn('number', '完成百分比');
+      data.addColumn('string', 'Dependencies');
+
+      data.addRows([
+        ['DICLO', 'Diclofenac 12.5mg Supp', '栓劑', new Date(2025,10,24), null, daysToMilliseconds(1), 100, null],
+        ['GLU5', 'Glucose 5% 500 mL', 'IVD', new Date(2025,10,24), null, daysToMilliseconds(1), 100, null],
+        ['FENT', 'Fentanyl 0.05 mg/mL Amp', 'IVP', new Date(2025,10,24), null, daysToMilliseconds(1), 100, null],
+        ['MIDA', 'Midazolam 5 mg/mL Amp', 'IVD', new Date(2025,10,24), null, daysToMilliseconds(1), 100, null],
+        ['SIMET', 'Simethicone 20 mg/mL 懸浮液', 'PO', new Date(2025,10,24), null, daysToMilliseconds(1), 100, null],
+        ['LIDO', 'Lidocaine Spray 10% 50 mL', 'EXT', new Date(2025,10,24), null, daysToMilliseconds(1), 100, null],
+        ['BUTY', 'Butylscopolamine 20 mg/mL Amp', 'IVP', new Date(2025,10,24), null, daysToMilliseconds(1), 100, null],
+        ['ULTRA', 'Ultravist 370 100 mL', 'IVP', new Date(2025,10,24), null, daysToMilliseconds(1), 100, null],
+        ['POTG', 'Potassium gluconate 20 meq 口服液', 'PO', new Date(2025,10,24), new Date(2025,10,27), null, 100, null],
+        ['KCL', 'KCl 10 mEq in Saline 500 mL', 'IVD', new Date(2025,10,24), null, daysToMilliseconds(1), 100, null],
+        ['TAI5', 'Taita No.5 複方 400 mL', 'IVD', new Date(2025,10,22), new Date(2025,11,6), null, 100, null],
+        ['NS09', 'Sodium chloride 0.9% 500 mL', 'IVD', new Date(2025,10,21), new Date(2025,11,5), null, 100, null],
+        ['MORPH', 'Morphine HCl 10 mg/mL Amp', 'IVD', new Date(2025,10,21), null, daysToMilliseconds(1), 100, null],
+        ['FLOM', 'Flomoxef sodium 1g Vial', 'IVD', new Date(2025,10,21), new Date(2025,10,26), null, 100, null]
+      ]);
+
+      const options = {
+        height: 500,
+        gantt: {
+          trackHeight: 30,
+          barHeight: 20
+        }
+      };
+
+      const chart = new google.visualization.Gantt(document.getElementById('chart_div'));
+      chart.draw(data, options);
+    }
+
+    document.getElementById('btnExport').onclick = async function() {
+      const svgElem = document.querySelector('#chart_div svg');
+      if (!svgElem) {
+        alert('SVG 未生成，請先顯示圖表');
+        return;
+      }
+
+      // 計算所有子元素的 bbox，用來調整 viewBox
+      let minY = Infinity, maxY = -Infinity;
+      svgElem.querySelectorAll('*').forEach(el => {
+        if (el.getBBox) {
+          const box = el.getBBox();
+          minY = Math.min(minY, box.y);
+          maxY = Math.max(maxY, box.y + box.height);
+        }
+      });
+      if (minY === Infinity) minY = 0;
+      const contentHeight = maxY - minY;
+      const padding = 20;
+
+      let svgString = new XMLSerializer().serializeToString(svgElem);
+      const width = svgElem.clientWidth;
+      const newHeight = contentHeight + padding;
+
+      svgString = svgString.replace(
+        /<svg([^>]*)>/,
+        `<svg$1 viewBox="0 ${minY} ${width} ${newHeight}" width="${width}" height="${newHeight}">`
+      );
+
+      const dpr = window.devicePixelRatio || 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = width * dpr;
+      canvas.height = newHeight * dpr;
+      canvas.style.width = width + 'px';
+      canvas.style.height = newHeight + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      const v = await canvg.Canvg.fromString(ctx, svgString);
+      await v.render();
+
+      const dataUrl = canvas.toDataURL('image/png');
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      const result = document.getElementById('result');
+      result.innerHTML = '';
+      result.appendChild(img);
+
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'med_timeline_full.png';
+      a.textContent = '下載完整圖片 (PNG)';
+      result.appendChild(a);
+    };
+  </script>
+</body>
+</html>
